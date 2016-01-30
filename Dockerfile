@@ -13,7 +13,7 @@ RUN wget https://ftp.dlitz.net/pub/dlitz/crypto/pycrypto/pycrypto-2.6.1.tar.gz &
     ./configure && python setup.py build && python setup.py install
 
 # Clone the git repository
-RUN git clone https://github.com/guedou/scapy-python2.5 &&
+RUN git clone https://github.com/guedou/scapy-python2.5 && \
     python --version
 #    cd scapy/test && \
 #    for f in *.uts; do \
