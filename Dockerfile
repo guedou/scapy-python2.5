@@ -14,11 +14,11 @@ RUN wget https://ftp.dlitz.net/pub/dlitz/crypto/pycrypto/pycrypto-2.6.1.tar.gz &
 
 # Clone the git repository
 RUN git clone https://github.com/guedou/scapy-python2.5 && \
-    python --version
-#    cd scapy/test && \
-#    for f in *.uts; do \
-#      ./run_tests -q -F -t $f -K netaccess || exit $?; \
-#    done && \
-#    for f in ../scapy/contrib/*.uts ; do \
-#      ./run_tests -q -F -t $f -K netaccess -P "load_contrib('$(basename ${f/.uts})')" || exit $?; \
-#    done
+    python --version && \
+    cd scapy-python2.5/test && \
+    for f in *.uts; do \
+      ./run_tests -q -F -t $f -K netaccess || exit $?; \
+    done && \
+    for f in ../scapy/contrib/*.uts ; do \
+      ./run_tests -q -F -t $f -K netaccess -P "load_contrib('$(basename ${f/.uts})')" || exit $?; \
+    done
