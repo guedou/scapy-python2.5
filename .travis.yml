@@ -17,5 +17,4 @@ install:
   - pip install pycrypto
 
 script:
-  - docker build -t guedou/scapy-python2.5:v0.1 .
   - cd test/; for f in *.uts; do ./run_tests -q -F -t $f -K netaccess || exit $?; done; for f in ../scapy/contrib/*.uts ; do ./run_tests -q -F -t $f -K netaccess -P "load_contrib('$(basename ${f/.uts})')" || exit $?; done
