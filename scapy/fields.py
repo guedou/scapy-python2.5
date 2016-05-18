@@ -176,6 +176,26 @@ class PadField(object):
         return getattr(self._fld,attr)
         
 
+class DestField(Field):
+    __slots__ = ["defaultdst"]
+    # Each subclass must have its own bindings attribute
+    # bindings = {}
+    def __init__(self, name, default):
+        self.defaultdst = default
+    def dst_from_pkt(self, pkt):
+        for addr, condition in self.bindings.get(pkt.payload.__class__, []):
+            try:
+                if all(pkt.payload.getfieldval(field) == value
+                       for field, value in condition.iteritems()):
+                    return addr
+            except AttributeError:
+                pass
+        return self.defaultdst
+    @classmethod
+    def bind_addr(cls, layer, addr, **condition):
+        cls.bindings.setdefault(layer, []).append((addr, condition))
+
+
 class MACField(Field):
     def __init__(self, name, default):
         Field.__init__(self, name, default, "6s")
@@ -203,7 +223,7 @@ class IPField(Field):
     def __init__(self, name, default):
         Field.__init__(self, name, default, "4s")
     def h2i(self, pkt, x):
-        if type(x) is str:
+        if isinstance(x, basestring):
             try:
                 inet_aton(x)
             except socket.error:
@@ -282,6 +302,10 @@ class X3BytesField(XByteField):
 class ThreeBytesField(X3BytesField, ByteField):
     def i2repr(self, pkt, x):
         return ByteField.i2repr(self, pkt, x)
+
+class SignedByteField(Field):
+    def __init__(self, name, default):
+        Field.__init__(self, name, default, "b")
 
 class ShortField(Field):
     def __init__(self, name, default):
@@ -527,6 +551,12 @@ class StrLenField(StrField):
         l = self.length_from(pkt)
         return s[l:], self.m2i(pkt,s[:l])
     
+class StrLenFieldUtf16(StrLenField):
+    def h2i(self, pkt, x):
+        return x.encode('utf-16')[2:]
+    def i2h(self, pkt, x):
+        return x.decode('utf-16')
+
 class BoundStrLenField(StrLenField):
     __slots__ = ["minlen", "maxlen"]
     def __init__(self,name, default, minlen= 0, maxlen= 255, fld=None, length_from=None):

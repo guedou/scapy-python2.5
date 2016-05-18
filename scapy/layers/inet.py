@@ -10,6 +10,7 @@ IPv4 (Internet Protocol v4).
 import os,time,struct,re,socket,new
 from select import select
 from collections import defaultdict
+
 from scapy.utils import checksum
 from scapy.layers.l2 import *
 from scapy.config import conf
@@ -212,7 +213,8 @@ TCPOptions = (
                 8 : ("Timestamp","!II"),
                 14 : ("AltChkSum","!BH"),
                 15 : ("AltChkSumOpt",None),
-                25 : ("Mood","!p")
+                25 : ("Mood","!p"),
+                28 : ("UTO", "!H")
                 },
               { "EOL":0,
                 "NOP":1,
@@ -223,7 +225,8 @@ TCPOptions = (
                 "Timestamp":8,
                 "AltChkSum":14,
                 "AltChkSumOpt":15,
-                "Mood":25
+                "Mood":25,
+                "UTO":28
                 } )
 
 class TCPOptionsField(StrField):
@@ -322,7 +325,23 @@ class ICMPTimeStampField(IntField):
         return val
 
 
+class DestIPField(IPField, DestField):
+    bindings = {}
+    def __init__(self, name, default):
+        IPField.__init__(self, name, None)
+        DestField.__init__(self, name, default)
+    def i2m(self, pkt, x):
+        if x is None:
+            x = self.dst_from_pkt(pkt)
+        return IPField.i2m(self, pkt, x)
+    def i2h(self, pkt, x):
+        if x is None:
+            x = self.dst_from_pkt(pkt)
+        return IPField.i2h(self, pkt, x)
+
+
 class IP(Packet, IPTools):
+    __slots__ = ["_defrag_pos"]
     name = "IP"
     fields_desc = [ BitField("version" , 4 , 4),
                     BitField("ihl", None, 4),
@@ -336,7 +355,7 @@ class IP(Packet, IPTools):
                     XShortField("chksum", None),
                     #IPField("src", "127.0.0.1"),
                     Emph(SourceIPField("src","dst")),
-                    Emph(IPField("dst", "127.0.0.1")),
+                    Emph(DestIPField("dst", "127.0.0.1")),
                     PacketListField("options", [], IPOption, length_from=lambda p:p.ihl*4-20) ]
     def post_build(self, p, pay):
         ihl = self.ihl
@@ -438,8 +457,8 @@ class TCP(Packet):
                     IntField("seq", 0),
                     IntField("ack", 0),
                     BitField("dataofs", None, 4),
-                    BitField("reserved", 0, 4),
-                    FlagsField("flags", 0x2, 8, "FSRPAUEC"),
+                    BitField("reserved", 0, 3),
+                    FlagsField("flags", 0x2, 9, "FSRPAUECN"),
                     ShortField("window", 8192),
                     XShortField("chksum", None),
                     ShortField("urgptr", 0),
@@ -453,7 +472,12 @@ class TCP(Packet):
         if self.chksum is None:
             if isinstance(self.underlayer, IP):
                 if self.underlayer.len is not None:
-                    ln = self.underlayer.len-20
+                    if self.underlayer.ihl is None:
+                        olen = sum(len(x) for x in self.underlayer.options)
+                        ihl = 5 + olen / 4 + (1 if olen % 4 else 0)
+                    else:
+                        ihl = self.underlayer.ihl
+                    ln = self.underlayer.len - 4 * ihl
                 else:
                     ln = len(p)
                 psdhdr = struct.pack("!4s4sHH",
@@ -507,7 +531,12 @@ class UDP(Packet):
         if self.chksum is None:
             if isinstance(self.underlayer, IP):
                 if self.underlayer.len is not None:
-                    ln = self.underlayer.len-20
+                    if self.underlayer.ihl is None:
+                        olen = sum(len(x) for x in self.underlayer.options)
+                        ihl = 5 + olen / 4 + (1 if olen % 4 else 0)
+                    else:
+                        ihl = self.underlayer.ihl
+                    ln = self.underlayer.len - 4 * ihl
                 else:
                     ln = len(p)
                 psdhdr = struct.pack("!4s4sHH",
@@ -990,14 +1019,14 @@ class TracerouteResult(SndRcvList):
             if d not in trace:
                 trace[d] = {}
             trace[d][s[IP].ttl] = r[IP].src, ICMP not in r
-        for k in trace.values():
-            m = filter(lambda x:k[x][1], k.keys())
-            if not m:
+        for k in trace.itervalues():
+            try:
+                m = min(x for x, y in k.itervalues() if y[1])
+            except ValueError:
                 continue
-            m = min(m)
-            for l in k.keys():
+            for l in k.keys():  # use .keys(): k is modified in the loop
                 if l > m:
-                    del(k[l])
+                    del k[l]
         return trace
 
     def trace3D(self):
@@ -1035,8 +1064,7 @@ class TracerouteResult(SndRcvList):
         for i in trace:
             tr = trace[i]
             tr3d[i] = []
-            ttl = tr.keys()
-            for t in xrange(1,max(ttl)+1):
+            for t in xrange(1, max(tr) + 1):
                 if t not in rings:
                     rings[t] = []
                 if t in tr:
@@ -1060,12 +1088,12 @@ class TracerouteResult(SndRcvList):
                 s = IPsphere(pos=((l-1)*visual.cos(2*i*visual.pi/l),(l-1)*visual.sin(2*i*visual.pi/l),2*t),
                              ip = r[i][0],
                              color = col)
-                for trlst in tr3d.values():
+                for trlst in tr3d.itervalues():
                     if t <= len(trlst):
                         if trlst[t-1] == i:
                             trlst[t-1] = s
         forecol = colgen(0.625, 0.4375, 0.25, 0.125)
-        for trlst in tr3d.values():
+        for trlst in tr3d.itervalues():
             col = forecol.next()
             start = (0,0,0)
             for ip in trlst:
@@ -1110,8 +1138,32 @@ class TracerouteResult(SndRcvList):
                 movcenter = visual.scene.mouse.pos
                 
                 
-    def world_trace(self):
-        from modules.geo import locate_ip
+    def world_trace(self, **kargs):
+        """Display traceroute results on a world map."""
+
+        # Check that the GeoIP module can be imported
+        try:
+            import GeoIP
+        except ImportError:
+            message = "Can't import GeoIP. Won't be able to plot the world."
+            scapy.utils.log_loading.info(message)
+            return list()
+
+        # Check if this is an IPv6 traceroute and load the correct file
+        if isinstance(self, scapy.layers.inet6.TracerouteResult6):
+            geoip_city_filename = conf.geoip_city_ipv6
+        else:
+            geoip_city_filename = conf.geoip_city
+
+        # Check that the GeoIP database can be opened
+        try:
+            db = GeoIP.open(conf.geoip_city, 0)
+        except:
+            message = "Can't open GeoIP database at %s" % conf.geoip_city
+            scapy.utils.log_loading.info(message)
+            return list()
+
+        # Regroup results per trace
         ips = {}
         rt = {}
         ports_done = {}
@@ -1131,27 +1183,44 @@ class TracerouteResult(SndRcvList):
             trace[s.ttl] = r.src
             rt[trace_id] = trace
 
+        # Get the addresses locations
         trt = {}
         for trace_id in rt:
             trace = rt[trace_id]
             loctrace = []
-            for i in xrange(max(trace.keys())):
+            for i in xrange(max(trace)):
                 ip = trace.get(i,None)
                 if ip is None:
                     continue
-                loc = locate_ip(ip)
+                loc = db.record_by_addr(ip)
                 if loc is None:
                     continue
-#                loctrace.append((ip,loc)) # no labels yet
+                loc = loc.get('longitude'), loc.get('latitude')
+                if loc == (None, None):
+                    continue
                 loctrace.append(loc)
             if loctrace:
                 trt[trace_id] = loctrace
 
-        tr = map(lambda x: Gnuplot.Data(x,with_="lines"), trt.values())
-        g = Gnuplot.Gnuplot()
-        world = Gnuplot.File(conf.gnuplot_world,with_="lines")
-        g.plot(world,*tr)
-        return g
+        # Load the map renderer
+        from mpl_toolkits.basemap import Basemap
+        bmap = Basemap()
+
+        # Split latitudes and longitudes per traceroute measurement
+        locations = [zip(*tr) for tr in trt.itervalues()]
+
+        # Plot the traceroute measurement as lines in the map
+        lines = [bmap.plot(*bmap(lons, lats)) for lons, lats in locations]
+
+        # Draw countries   
+        bmap.drawcoastlines()
+
+        # Call show() if matplotlib is not inlined
+        if not MATPLOTLIB_INLINED:
+            plt.show()
+
+        # Return the drawn lines
+        return lines
 
     def make_graph(self,ASres=None,padding=0):
         if ASres is None:
@@ -1204,8 +1273,7 @@ class TracerouteResult(SndRcvList):
         bhip = {}
         for rtk in rt:
             trace = rt[rtk]
-            k = trace.keys()
-            for n in xrange(min(k), max(k)):
+            for n in xrange(min(trace), max(trace)):
                 if not trace.has_key(n):
                     trace[n] = unknown_label.next()
             if not ports_done.has_key(rtk):
@@ -1224,7 +1292,7 @@ class TracerouteResult(SndRcvList):
                 blackholes.append(bh)
     
         # Find AS numbers
-        ASN_query_list = dict.fromkeys(map(lambda x:x.rsplit(" ",1)[0],ips)).keys()
+        ASN_query_list = set(x.rsplit(" ",1)[0] for x in ips)
         if ASres is None:            
             ASNlist = []
         else:
@@ -1297,10 +1365,10 @@ class TracerouteResult(SndRcvList):
             s += "#---[%s\n" % `rtk`
             s += '\t\tedge [color="#%s%s%s"];\n' % forecolorlist.next()
             trace = rt[rtk]
-            k = trace.keys()
-            for n in xrange(min(k), max(k)):
+            maxtrace = max(trace)
+            for n in xrange(min(trace), maxtrace):
                 s += '\t%s ->\n' % trace[n]
-            s += '\t%s;\n' % trace[max(k)]
+            s += '\t%s;\n' % trace[maxtrace]
     
         s += "}\n";
         self.graphdef = s

@@ -113,8 +113,7 @@ def hexdiff(x,y):
     y=str(y)[::-1]
     SUBST=1
     INSERT=1
-    d={}
-    d[-1,-1] = 0,(-1,-1)
+    d = {(-1, -1): (0, (-1, -1))}
     for j in xrange(len(y)):
         d[-1,j] = d[-1,j-1][0]+INSERT, (-1,j-1)
     for i in xrange(len(x)):
@@ -426,6 +425,22 @@ def incremental_label(label="tag%05i", start=0):
         yield label % start
         start += 1
 
+
+# Python <= 2.5 do not provide bin() built-in function
+try:
+    bin(0)
+except NameError:
+    def _binrepr(val):
+        while val:
+            yield val & 1
+            val >>= 1
+
+    binrepr = lambda val: "".join(reversed([str(bit) for bit in
+                                            _binrepr(val)])) or "0"
+else:
+    binrepr = lambda val: bin(val)[2:]
+
+
 #########################
 #### Enum management ####
 #########################
@@ -519,52 +534,115 @@ def corrupt_bits(s, p=0.01, n=None):
 @conf.commands.register
 def wrpcap(filename, pkt, *args, **kargs):
     """Write a list of packets to a pcap file
+
+filename: the name of the file to write packets to, or an open,
+          writable file-like object. The file descriptor will be
+          closed at the end of the call, so do not use an object you
+          do not want to close (e.g., running wrpcap(sys.stdout, [])
+          in interactive mode will crash Scapy).
 gz: set to 1 to save a gzipped capture
 linktype: force linktype value
-endianness: "<" or ">", force endianness"""
+endianness: "<" or ">", force endianness
+sync: do not bufferize writes to the capture file
+
+    """
     with PcapWriter(filename, *args, **kargs) as fdesc:
         fdesc.write(pkt)
 
 @conf.commands.register
 def rdpcap(filename, count=-1):
-    """Read a pcap file and return a packet list
-count: read only <count> packets"""
+    """Read a pcap or pcapng file and return a packet list
+
+count: read only <count> packets
+
+    """
     with PcapReader(filename) as fdesc:
         return fdesc.read_all(count=count)
 
 
+class PcapReader_metaclass(type):
+    """Metaclass for (Raw)Pcap(Ng)Readers"""
+
+    def __new__(cls, name, bases, dct):
+        """The `alternative` class attribute is declared in the PcapNg
+        variant, and set here to the Pcap variant.
+
+        """
+        newcls = super(PcapReader_metaclass, cls).__new__(cls, name, bases, dct)
+        if 'alternative' in dct:
+            dct['alternative'].alternative = newcls
+        return newcls
+
+    def __call__(cls, filename):
+        """Creates a cls instance, use the `alternative` if that
+        fails.
+
+        """
+        i = cls.__new__(cls, cls.__name__, cls.__bases__, cls.__dict__)
+        filename, fdesc, magic = cls.open(filename)
+        try:
+            i.__init__(filename, fdesc, magic)
+        except Scapy_Exception:
+            if "alternative" in cls.__dict__:
+                cls = cls.__dict__["alternative"]
+                i = cls.__new__(cls, cls.__name__, cls.__bases__, cls.__dict__)
+                try:
+                    i.__init__(filename, fdesc, magic)
+                except Scapy_Exception:
+                    try:
+                        self.f.seek(-4, 1)
+                    except:
+                        pass
+                    raise Scapy_Exception("Not a supported capture file")
+
+        return i
+
+    @staticmethod
+    def open(filename):
+        """Open (if necessary) filename, and read the magic."""
+        if isinstance(filename, basestring):
+            try:
+                fdesc = gzip.open(filename,"rb")
+                magic = fdesc.read(4)
+            except IOError:
+                fdesc = open(filename,"rb")
+                magic = fdesc.read(4)
+        else:
+            fdesc = filename
+            filename = (fdesc.name
+                        if hasattr(fdesc, "name") else
+                        "No name")
+            magic = fdesc.read(4)
+        return filename, fdesc, magic
+
 
 class RawPcapReader:
     """A stateful pcap reader. Each packet is returned as a string"""
-
-    def __init__(self, filename):
+    __metaclass__ = PcapReader_metaclass
+    def __init__(self, filename, fdesc, magic):
         self.filename = filename
-        try:
-            self.f = gzip.open(filename,"rb")
-            magic = self.f.read(4)
-        except IOError:
-            self.f = open(filename,"rb")
-            magic = self.f.read(4)
+        self.f = fdesc
         if magic == "\xa1\xb2\xc3\xd4": #big endian
             self.endian = ">"
-        elif  magic == "\xd4\xc3\xb2\xa1": #little endian
+        elif magic == "\xd4\xc3\xb2\xa1": #little endian
             self.endian = "<"
         else:
-            raise Scapy_Exception("Not a pcap capture file (bad magic)")
+            raise Scapy_Exception(
+                "Not a pcap capture file (bad magic: %r)" % magic
+            )
         hdr = self.f.read(20)
         if len(hdr)<20:
             raise Scapy_Exception("Invalid pcap file (too short)")
-        vermaj,vermin,tz,sig,snaplen,linktype = struct.unpack(self.endian+"HHIIII",hdr)
-
+        vermaj, vermin, tz, sig, snaplen, linktype = struct.unpack(
+            self.endian + "HHIIII", hdr
+        )
         self.linktype = linktype
-
-
 
     def __iter__(self):
         return self
 
     def next(self):
-        """impliment the iterator protocol on a set of packets in a pcap file"""
+        """implement the iterator protocol on a set of packets in a pcap file"""
         pkt = self.read_packet()
         if pkt == None:
             raise StopIteration
@@ -625,8 +703,8 @@ class RawPcapReader:
 
 
 class PcapReader(RawPcapReader):
-    def __init__(self, filename):
-        RawPcapReader.__init__(self, filename)
+    def __init__(self, filename, fdesc, magic):
+        RawPcapReader.__init__(self, filename, fdesc, magic)
         try:
             self.LLcls = conf.l2types[self.linktype]
         except KeyError:
@@ -654,34 +732,141 @@ class PcapReader(RawPcapReader):
         return plist.PacketList(res,name = os.path.basename(self.filename))
     def recv(self, size=MTU):
         return self.read_packet(size=size)
-        
+
+
+class RawPcapNgReader(RawPcapReader):
+    """A stateful pcapng reader. Each packet is returned as a
+    string.
+
+    """
+
+    alternative = RawPcapReader
+
+    def __init__(self, filename, fdesc, magic):
+        self.filename = filename
+        self.f = fdesc
+        # A list of (linktype, snaplen); will be populated by IDBs.
+        self.interfaces = []
+        self.blocktypes = {
+            1: self.read_block_idb,
+            6: self.read_block_epb,
+        }
+        if magic != "\x0a\x0d\x0d\x0a": # PcapNg:
+            raise Scapy_Exception(
+                "Not a pcapng capture file (bad magic: %r)" % magic
+            )
+        # see https://github.com/pcapng/pcapng
+        blocklen, magic = self.f.read(4), self.f.read(4)
+        if magic == "\x1a\x2b\x3c\x4d":
+            self.endian = ">"
+        elif magic == "\x4d\x3c\x2b\x1a":
+            self.endian = "<"
+        else:
+            raise Scapy_Exception("Not a pcapng capture file (bad magic)")
+        self.f.seek(0)
+
+    def read_packet(self, size=MTU):
+        """Read blocks until it reaches either EOF or a packet, and
+        returns None or (packet, (linktype, sec, usec, wirelen)),
+        where packet is a string.
+
+        """
+        while True:
+            try:
+                blocktype, blocklen = struct.unpack(self.endian + "2I",
+                                                    self.f.read(8))
+            except struct.error:
+                return None
+            block = self.f.read(blocklen - 12)
+            try:
+                if (blocklen,) != struct.unpack(self.endian + 'I',
+                                                self.f.read(4)):
+                    raise Scapy_Exception(
+                        "Invalid pcapng block (bad blocklen)"
+                    )
+            except struct.error:
+                return None
+            res = self.blocktypes.get(blocktype,
+                                      lambda block, size: None)(block, size)
+            if res is not None:
+                return res
+
+    def read_block_idb(self, block, _):
+        """Interface Description Block"""
+        self.interfaces.append(struct.unpack(self.endian + "HxxI", block[:8]))
+
+    def read_block_epb(self, block, size):
+        """Enhanced Packet Block"""
+        intid, sec, usec, caplen, wirelen = struct.unpack(self.endian + "5I",
+                                                          block[:20])
+        return (block[20:20 + caplen][:size],
+                (self.interfaces[intid][0], sec, usec, wirelen))
+
+
+class PcapNgReader(RawPcapNgReader):
+
+    alternative = PcapReader
+
+    def __init__(self, filename, fdesc, magic):
+        RawPcapNgReader.__init__(self, filename, fdesc, magic)
+
+    def read_packet(self, size=MTU):
+        rp = RawPcapNgReader.read_packet(self, size=size)
+        if rp is None:
+            return None
+        s, (linktype, sec, usec, wirelen) = rp
+        try:
+            p = conf.l2types[linktype](s)
+        except KeyboardInterrupt:
+            raise
+        except:
+            if conf.debug_dissector:
+                raise
+            p = conf.raw_layer(s)
+        p.time = sec+0.000001*usec
+        return p
+    def read_all(self,count=-1):
+        res = RawPcapNgReader.read_all(self, count)
+        import plist
+        return plist.PacketList(res, name=os.path.basename(self.filename))
+    def recv(self, size=MTU):
+        return self.read_packet()
 
 
 class RawPcapWriter:
     """A stream PCAP writer with more control than wrpcap()"""
     def __init__(self, filename, linktype=None, gz=False, endianness="", append=False, sync=False):
         """
-        linktype: force linktype to a given value. If None, linktype is taken
-                  from the first writter packet
-        gz: compress the capture on the fly
-        endianness: force an endianness (little:"<", big:">"). Default is native
-        append: append packets to the capture file instead of truncating it
-        sync: do not bufferize writes to the capture file
+filename: the name of the file to write packets to, or an open,
+          writable file-like object.
+linktype: force linktype to a given value. If None, linktype is taken
+          from the first writter packet
+gz: compress the capture on the fly
+endianness: force an endianness (little:"<", big:">"). Default is native
+append: append packets to the capture file instead of truncating it
+sync: do not bufferize writes to the capture file
+
         """
         
         self.linktype = linktype
         self.header_present = 0
-        self.append=append
+        self.append = append
         self.gz = gz
         self.endian = endianness
-        self.filename=filename
-        self.sync=sync
+        self.sync = sync
         bufsz=4096
         if sync:
-            bufsz=0
+            bufsz = 0
 
-        self.f = [open,gzip.open][gz](filename,append and "ab" or "wb", gz and 9 or bufsz)
-        
+        if isinstance(filename, basestring):
+            self.filename = filename
+            self.f = [open,gzip.open][gz](filename,append and "ab" or "wb", gz and 9 or bufsz)
+        else:
+            self.f = filename
+            self.filename = (filename.name
+                             if hasattr(filename, "name") else
+                             "No name")
+
     def fileno(self):
         return self.f.fileno()
 
@@ -727,6 +912,11 @@ class RawPcapWriter:
     def _write_packet(self, packet, sec=None, usec=None, caplen=None, wirelen=None):
         """writes a single packet to the pcap file
         """
+        if isinstance(packet, tuple):
+            for pkt in packet:
+                self._write_packet(pkt, sec=sec, usec=usec, caplen=caplen,
+                                   wirelen=wirelen)
+            return
         if caplen is None:
             caplen = len(packet)
         if wirelen is None:
@@ -740,7 +930,7 @@ class RawPcapWriter:
                 usec = int(round((t-it)*1000000))
         self.f.write(struct.pack(self.endian+"IIII", sec, usec, caplen, wirelen))
         self.f.write(packet)
-        if self.gz and self.sync:
+        if self.sync:
             self.f.flush()
 
     def flush(self):
@@ -757,7 +947,10 @@ class RawPcapWriter:
 
 
 class PcapWriter(RawPcapWriter):
+    """A stream PCAP writer with more control than wrpcap()"""
     def _write_header(self, pkt):
+        if isinstance(pkt, tuple) and pkt:
+            pkt = pkt[0]
         if self.linktype == None:
             try:
                 self.linktype = conf.l2types[pkt.__class__]
@@ -767,6 +960,10 @@ class PcapWriter(RawPcapWriter):
         RawPcapWriter._write_header(self, pkt)
 
     def _write_packet(self, packet):
+        if isinstance(packet, tuple):
+            for pkt in packet:
+                self._write_packet(pkt)
+            return
         sec = int(packet.time)
         usec = int(round((packet.time-sec)*1000000))
         s = str(packet)

@@ -225,8 +225,8 @@ class StationInfoV11(Packet):
                 X3BytesField("reserved_s2", 0x000000),
                 MACField("firstnodeMAC", "ff:ff:ff:ff:ff:ff"),
                 LEShortField("TXaverage", 0x0000),
-                BitField("RxCoupling", 0b0000, 4),
-                BitField("TxCoupling", 0b0000, 4),
+                BitField("RxCoupling", 0, 4),
+                BitField("TxCoupling", 0, 4),
                 XByteField("reserved_s3", 0x00),
                 LEShortField("RXaverage", 0x0000),
                 XByteField("reserved_s4", 0x00) ]
@@ -451,7 +451,6 @@ class ReadModuleDataConfirmation(Packet):
                 ]
 
     def post_build(self, p, pay):
-        import binascii
         if self.DataLen is None:
             _len = len(self.ModuleData)
             p = p[:6] + struct.pack('h', _len) + p[8:]
@@ -475,7 +474,6 @@ class WriteModuleDataRequest(Packet):
                 ]
 
     def post_build(self, p, pay):
-        import binascii
         if self.DataLen is None:
             _len = len(self.ModuleData)
             p = p[:2] + struct.pack('h', _len) + p[4:]

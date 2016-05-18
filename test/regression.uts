@@ -22,7 +22,21 @@ lsc()
 
 = Configuration
 ~ conf
-conf.debug_dissect=1
+conf.debug_dissector = True
+
+
+############
+############
++ Scapy functions tests
+
+= Interface related functions
+
+get_if_raw_hwaddr(conf.iface)
+
+get_if_raw_addr(conf.iface).encode("hex")
+
+get_if_list()
+
 
 ############
 ############
@@ -105,7 +119,7 @@ else:
 = equality
 ~ basic
 w=Ether()/IP()/UDP(dport=53)
-x=Ether()/IP(dst="127.0.0.1")/UDP()
+x=Ether()/IP(version=4)/UDP()
 y=Ether()/IP()/UDP(dport=4)
 z=Ether()/IP()/UDP()/NTP()
 t=Ether()/IP()/TCP()
@@ -540,103 +554,6 @@ assert(x.PDU.varbindlist[0].value == "172.31.19.2")
 assert(x.PDU.varbindlist[2].oid == "1.3.6.1.4.1.253.8.64.4.2.1.5.10.14130400")
 assert(x.PDU.varbindlist[2].value == 1)
 
-############
-############
-+ X509 tests
-
-= X509 certificate assembling
-~ X509 ASN1
-c=X509Cert( pubkey='\x00'+str(ASN1_SEQUENCE([ASN1_INTEGER(1),ASN1_INTEGER(2)])), signature="xxxxxx")
-c.show()
-str(c) == str(X509Cert(str(c)))
-
-= Small X509 certificate disassembling
-~ X509 ASN1
-* This cert has neither the version field nor X509v3 extensions
-small="""MIIB+jCCAWMCAgGjMA0GCSqGSIb3DQEBBAUAMEUxCzAJBgNVBAYTAlVTMRgw
-FgYDVQQKEw9HVEUgQ29ycG9yYXRpb24xHDAaBgNVBAMTE0dURSBDeWJlclRy
-dXN0IFJvb3QwHhcNOTYwMjIzMjMwMTAwWhcNMDYwMjIzMjM1OTAwWjBFMQsw
-CQYDVQQGEwJVUzEYMBYGA1UEChMPR1RFIENvcnBvcmF0aW9uMRwwGgYDVQQD
-ExNHVEUgQ3liZXJUcnVzdCBSb290MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCB
-iQKBgQC45k+625h8cXyvRLfTD0bZZOWTwUKOx7pJjTUteueLveUFMVnGsS8K
-DPufpz+iCWaEVh43KRuH6X4MypqfpX/1FZSj1aJGgthoTNE3FQZor734sLPw
-KfWVWgkWYXcKIiXUT0Wqx73llt/51KiOQswkwB6RJ0q1bQaAYznEol44AwID
-AQABMA0GCSqGSIb3DQEBBAUAA4GBABKzdcZfHeFhVYAA1IFLezEPI2PnPfMD
- +fQ2qLvZ46WXTeorKeDWanOB5sCJo9Px4KWlIjeaY8JIILTbcuPI9tl8vrGv
-U9oUtCG41tWW4/5ODFlitppK+ULdjG+BqXH/9ApybW1EDp3zdHSo1TRJ6V6e
-6bR64eVaH4QwnNOfpSXY """.decode("base64")
-c = X509Cert(small)
-c.show()
-assert( str(c) == small )
-assert( c.version == None )
-assert( c.sn == 419 )
-assert( "/".join(rdn.value.val for rdn in c.issuer) == "US/GTE Corporation/GTE CyberTrust Root")
-assert( c.not_after == '060223235900Z' )
-assert( c.x509v3ext == None )
-assert( c.signature == '\x00\x12\xb3u\xc6_\x1d\xe1aU\x80\x00\xd4\x81K{1\x0f#c\xe7=\xf3\x03\xf9\xf46\xa8\xbb\xd9\xe3\xa5\x97M\xea+)\xe0\xd6js\x81\xe6\xc0\x89\xa3\xd3\xf1\xe0\xa5\xa5"7\x9ac\xc2H \xb4\xdbr\xe3\xc8\xf6\xd9|\xbe\xb1\xafS\xda\x14\xb4!\xb8\xd6\xd5\x96\xe3\xfeN\x0cYb\xb6\x9aJ\xf9B\xdd\x8co\x81\xa9q\xff\xf4\nrmmD\x0e\x9d\xf3tt\xa8\xd54I\xe9^\x9e\xe9\xb4z\xe1\xe5Z\x1f\x840\x9c\xd3\x9f\xa5%\xd8' )
-
-
-= Big X509 certificate disassembling
-~ X509 ASN1
-small="""MIIIODCCB6GgAwIBAgIBADANBgkqhkiG9w0BAQUFADCCAR4xCzAJBgNVBAYT
-AkVTMRIwEAYDVQQIEwlCYXJjZWxvbmExEjAQBgNVBAcTCUJhcmNlbG9uYTEu
-MCwGA1UEChMlSVBTIEludGVybmV0IHB1Ymxpc2hpbmcgU2VydmljZXMgcy5s
-LjErMCkGA1UEChQiaXBzQG1haWwuaXBzLmVzIEMuSS5GLiAgQi02MDkyOTQ1
-MjE0MDIGA1UECxMrSVBTIENBIFRpbWVzdGFtcGluZyBDZXJ0aWZpY2F0aW9u
-IEF1dGhvcml0eTE0MDIGA1UEAxMrSVBTIENBIFRpbWVzdGFtcGluZyBDZXJ0
-aWZpY2F0aW9uIEF1dGhvcml0eTEeMBwGCSqGSIb3DQEJARYPaXBzQG1haWwu
-aXBzLmVzMB4XDTAxMTIyOTAxMTAxOFoXDTI1MTIyNzAxMTAxOFowggEeMQsw
-CQYDVQQGEwJFUzESMBAGA1UECBMJQmFyY2Vsb25hMRIwEAYDVQQHEwlCYXJj
-ZWxvbmExLjAsBgNVBAoTJUlQUyBJbnRlcm5ldCBwdWJsaXNoaW5nIFNlcnZp
-Y2VzIHMubC4xKzApBgNVBAoUImlwc0BtYWlsLmlwcy5lcyBDLkkuRi4gIEIt
-NjA5Mjk0NTIxNDAyBgNVBAsTK0lQUyBDQSBUaW1lc3RhbXBpbmcgQ2VydGlm
-aWNhdGlvbiBBdXRob3JpdHkxNDAyBgNVBAMTK0lQUyBDQSBUaW1lc3RhbXBp
-bmcgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxHjAcBgkqhkiG9w0BCQEWD2lw
-c0BtYWlsLmlwcy5lczCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAvLju
-VqWajOY2ycJioGaBjRrVetJznw6EZLqVtJCneK/K/lRhW86yIFcBrkSSQxA4
-Efdo/BdApWgnMjvEp+ZCccWZ73b/K5Uk9UmSGGjKALWkWi9uy9YbLA1UZ2t6
-KaFYq6JaANZbuxjC3/YeE1Z2m6Vo4pjOxgOKNNtMg0GmqaMCAwEAAaOCBIAw
-ggR8MB0GA1UdDgQWBBSL0BBQCYHynQnVDmB4AyKiP8jKZjCCAVAGA1UdIwSC
-AUcwggFDgBSL0BBQCYHynQnVDmB4AyKiP8jKZqGCASakggEiMIIBHjELMAkG
-A1UEBhMCRVMxEjAQBgNVBAgTCUJhcmNlbG9uYTESMBAGA1UEBxMJQmFyY2Vs
-b25hMS4wLAYDVQQKEyVJUFMgSW50ZXJuZXQgcHVibGlzaGluZyBTZXJ2aWNl
-cyBzLmwuMSswKQYDVQQKFCJpcHNAbWFpbC5pcHMuZXMgQy5JLkYuICBCLTYw
-OTI5NDUyMTQwMgYDVQQLEytJUFMgQ0EgVGltZXN0YW1waW5nIENlcnRpZmlj
-YXRpb24gQXV0aG9yaXR5MTQwMgYDVQQDEytJUFMgQ0EgVGltZXN0YW1waW5n
-IENlcnRpZmljYXRpb24gQXV0aG9yaXR5MR4wHAYJKoZIhvcNAQkBFg9pcHNA
-bWFpbC5pcHMuZXOCAQAwDAYDVR0TBAUwAwEB/zAMBgNVHQ8EBQMDB/+AMGsG
-A1UdJQRkMGIGCCsGAQUFBwMBBggrBgEFBQcDAgYIKwYBBQUHAwMGCCsGAQUF
-BwMEBggrBgEFBQcDCAYKKwYBBAGCNwIBFQYKKwYBBAGCNwIBFgYKKwYBBAGC
-NwoDAQYKKwYBBAGCNwoDBDARBglghkgBhvhCAQEEBAMCAAcwGgYDVR0RBBMw
-EYEPaXBzQG1haWwuaXBzLmVzMBoGA1UdEgQTMBGBD2lwc0BtYWlsLmlwcy5l
-czBHBglghkgBhvhCAQ0EOhY4VGltZXN0YW1waW5nIENBIENlcnRpZmljYXRl
-IGlzc3VlZCBieSBodHRwOi8vd3d3Lmlwcy5lcy8wKQYJYIZIAYb4QgECBBwW
-Gmh0dHA6Ly93d3cuaXBzLmVzL2lwczIwMDIvMEAGCWCGSAGG+EIBBAQzFjFo
-dHRwOi8vd3d3Lmlwcy5lcy9pcHMyMDAyL2lwczIwMDJUaW1lc3RhbXBpbmcu
-Y3JsMEUGCWCGSAGG+EIBAwQ4FjZodHRwOi8vd3d3Lmlwcy5lcy9pcHMyMDAy
-L3Jldm9jYXRpb25UaW1lc3RhbXBpbmcuaHRtbD8wQgYJYIZIAYb4QgEHBDUW
-M2h0dHA6Ly93d3cuaXBzLmVzL2lwczIwMDIvcmVuZXdhbFRpbWVzdGFtcGlu
-Zy5odG1sPzBABglghkgBhvhCAQgEMxYxaHR0cDovL3d3dy5pcHMuZXMvaXBz
-MjAwMi9wb2xpY3lUaW1lc3RhbXBpbmcuaHRtbDB/BgNVHR8EeDB2MDegNaAz
-hjFodHRwOi8vd3d3Lmlwcy5lcy9pcHMyMDAyL2lwczIwMDJUaW1lc3RhbXBp
-bmcuY3JsMDugOaA3hjVodHRwOi8vd3d3YmFjay5pcHMuZXMvaXBzMjAwMi9p
-cHMyMDAyVGltZXN0YW1waW5nLmNybDAvBggrBgEFBQcBAQQjMCEwHwYIKwYB
-BQUHMAGGE2h0dHA6Ly9vY3NwLmlwcy5lcy8wDQYJKoZIhvcNAQEFBQADgYEA
-ZbrBzAAalZHK6Ww6vzoeFAh8+4Pua2JR0zORtWB5fgTYXXk36MNbsMRnLWha
-sl8OCvrNPzpFoeo2zyYepxEoxZSPhExTCMWTs/zif/WN87GphV+I3pGW7hdb
-rqXqcGV4LCFkAZXOzkw+UPS2Wctjjba9GNSHSl/c7+lW8AoM6HU= """.decode("base64")
-c = X509Cert(small)
-c.show()
-assert( str(c) == small )
-assert( c.version == 2 )
-assert( c.sn == ASN1_NULL(0) )
-assert( "/".join(rdn.value.val for rdn in c.issuer if isinstance(rdn.value,ASN1_PRINTABLE_STRING)) == "ES/Barcelona/Barcelona/IPS Internet publishing Services s.l./IPS CA Timestamping Certification Authority/IPS CA Timestamping Certification Authority")
-assert( c.not_after == '251227011018Z' )
-assert( len(c.x509v3ext) == 16 )
-assert( c.signature == '\x00e\xba\xc1\xcc\x00\x1a\x95\x91\xca\xe9l:\xbf:\x1e\x14\x08|\xfb\x83\xeekbQ\xd33\x91\xb5`y~\x04\xd8]y7\xe8\xc3[\xb0\xc4g-hZ\xb2_\x0e\n\xfa\xcd?:E\xa1\xea6\xcf&\x1e\xa7\x11(\xc5\x94\x8f\x84LS\x08\xc5\x93\xb3\xfc\xe2\x7f\xf5\x8d\xf3\xb1\xa9\x85_\x88\xde\x91\x96\xee\x17[\xae\xa5\xeapex,!d\x01\x95\xce\xceL>P\xf4\xb6Y\xcbc\x8d\xb6\xbd\x18\xd4\x87J_\xdc\xef\xe9V\xf0\n\x0c\xe8u' )
-
-
-
 
 ############
 ############
@@ -656,7 +573,6 @@ x is not None and ICMP in x and x[ICMP].type == 0
 * is not reachable or down.
 dns_ans = sr1(IP(dst="resolver1.opendns.com")/UDP()/DNS(rd=1,qd=DNSQR(qname="www.slashdot.com")),timeout=5)
 DNS in dns_ans
-
 
 
 ############
@@ -1996,7 +1912,9 @@ a=ICMPv6NDOptSrcAddrList('\t\x05BBBBBB\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x
 a.type == 9 and a.len == 5 and a.res == 'BBBBBB' and len(a.addrlist) == 2 and a.addrlist[0] == "ffff::ffff" and a.addrlist[1] == "1111::1111"
 
 = ICMPv6NDOptSrcAddrList - Dissection with specific values 
+conf.debug_dissector = False
 a=ICMPv6NDOptSrcAddrList('\t\x03BBBBBB\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x11\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x11\x11')
+conf.debug_dissector = True
 a.type == 9 and a.len == 3 and a.res == 'BBBBBB' and len(a.addrlist) == 1 and a.addrlist[0] == "ffff::ffff" and isinstance(a.payload, Raw) and a.payload.load == '\x11\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x11\x11'
 
 ########### ICMPv6NDOptTgtAddrList Class (RFC 3122) #################
@@ -2021,7 +1939,9 @@ a=ICMPv6NDOptTgtAddrList('\n\x05BBBBBB\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x
 a.type == 10 and a.len == 5 and a.res == 'BBBBBB' and len(a.addrlist) == 2 and a.addrlist[0] == "ffff::ffff" and a.addrlist[1] == "1111::1111"
 
 = ICMPv6NDOptTgtAddrList - Instantiation with specific values 
+conf.debug_dissector = False
 a=ICMPv6NDOptTgtAddrList('\n\x03BBBBBB\xff\xff\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x11\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x11\x11')
+conf.debug_dissector = True
 a.type == 10 and a.len == 3 and a.res == 'BBBBBB' and len(a.addrlist) == 1 and a.addrlist[0] == "ffff::ffff" and isinstance(a.payload, Raw) and a.payload.load == '\x11\x11\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x11\x11'
 
 
@@ -2306,8 +2226,8 @@ c = ICMPv6NIQueryIPv6(flags="C")
 l = ICMPv6NIQueryIPv6(flags="L")
 s = ICMPv6NIQueryIPv6(flags="S")
 g = ICMPv6NIQueryIPv6(flags="G")
-all = ICMPv6NIQueryIPv6(flags="TALCLSG")
-t.flags == 1 and a.flags == 2 and c.flags == 4 and l.flags == 8 and s.flags == 16 and g.flags == 32 and all.flags == 63
+allflags = ICMPv6NIQueryIPv6(flags="TALCLSG")
+t.flags == 1 and a.flags == 2 and c.flags == 4 and l.flags == 8 and s.flags == 16 and g.flags == 32 and allflags.flags == 63
 
 
 = ICMPv6NIQuery* - flags handling (Test 2)
@@ -2317,8 +2237,8 @@ c = str(ICMPv6NIQueryNOOP(flags="C", nonce="A"*8))[6:8]
 l = str(ICMPv6NIQueryNOOP(flags="L", nonce="A"*8))[6:8]
 s = str(ICMPv6NIQueryNOOP(flags="S", nonce="A"*8))[6:8]
 g = str(ICMPv6NIQueryNOOP(flags="G", nonce="A"*8))[6:8]
-all = str(ICMPv6NIQueryNOOP(flags="TALCLSG", nonce="A"*8))[6:8]
-t == '\x00\x01' and a == '\x00\x02' and c == '\x00\x04' and l == '\x00\x08' and s == '\x00\x10' and g == '\x00\x20' and all == '\x00\x3F'
+allflags = str(ICMPv6NIQueryNOOP(flags="TALCLSG", nonce="A"*8))[6:8]
+t == '\x00\x01' and a == '\x00\x02' and c == '\x00\x04' and l == '\x00\x08' and s == '\x00\x10' and g == '\x00\x20' and allflags == '\x00\x3F'
 
 
 = ICMPv6NIReply* - flags handling (Test 1)
@@ -2328,8 +2248,8 @@ c = ICMPv6NIReplyIPv6(flags="C")
 l = ICMPv6NIReplyIPv6(flags="L")
 s = ICMPv6NIReplyIPv6(flags="S")
 g = ICMPv6NIReplyIPv6(flags="G")
-all = ICMPv6NIReplyIPv6(flags="TALCLSG")
-t.flags == 1 and a.flags == 2 and c.flags == 4 and l.flags == 8 and s.flags == 16 and g.flags == 32 and all.flags == 63
+allflags = ICMPv6NIReplyIPv6(flags="TALCLSG")
+t.flags == 1 and a.flags == 2 and c.flags == 4 and l.flags == 8 and s.flags == 16 and g.flags == 32 and allflags.flags == 63
 
 
 = ICMPv6NIReply* - flags handling (Test 2)
@@ -2339,8 +2259,8 @@ c = str(ICMPv6NIReplyNOOP(flags="C", nonce="A"*8))[6:8]
 l = str(ICMPv6NIReplyNOOP(flags="L", nonce="A"*8))[6:8]
 s = str(ICMPv6NIReplyNOOP(flags="S", nonce="A"*8))[6:8]
 g = str(ICMPv6NIReplyNOOP(flags="G", nonce="A"*8))[6:8]
-all = str(ICMPv6NIReplyNOOP(flags="TALCLSG", nonce="A"*8))[6:8]
-t == '\x00\x01' and a == '\x00\x02' and c == '\x00\x04' and l == '\x00\x08' and s == '\x00\x10' and g == '\x00\x20' and all == '\x00\x3F'
+allflags = str(ICMPv6NIReplyNOOP(flags="TALCLSG", nonce="A"*8))[6:8]
+t == '\x00\x01' and a == '\x00\x02' and c == '\x00\x04' and l == '\x00\x08' and s == '\x00\x10' and g == '\x00\x20' and allflags == '\x00\x3F'
 
 
 = ICMPv6NIQuery* - Flags Default values
@@ -2666,6 +2586,31 @@ l=fragment6(IPv6()/IPv6ExtHdrFragment()/TCP()/Raw(load="A"*4000), 800)
 del(l[4])
 del(l[2])
 str(defragment6(l)) == '`\x00\x00\x00\x0f\xb4\x06@\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x14\x00P\x00\x00\x00\x00\x00\x00\x00\x00P\x02 \x00\xb2\x0f\x00\x00AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+
++ Test read_routes6() function
+
+= Default output
+
+routes6 = read_routes6()
+# Expected results:
+# - one route if there is only the loopback interface
+# - three routes if there is a network interface
+
+iflist = get_if_list()
+if iflist == [scapy.arch.LOOPBACK_NAME]:
+    len(routes6) == 1
+elif len(iflist) >= 2:
+    len(routes6) >= 3
+else:
+    False
+
+= Check mandatory routes
+
+assert(len(filter(lambda r: r[0] == "::1" and r[-1] == ["::1"], routes6)) >= 1)
+if iflist >= 2:
+    assert(len(filter(lambda r: r[0] == "fe80::" and r[1] == 64, routes6)) >= 1)
+    len(filter(lambda r: in6_islladdr(r[0]) and r[1] == 128 and r[-1] == ["::1"], routes6)) >= 1
+
 
 ########### Route6 Class ############################################
 
@@ -4382,3 +4327,521 @@ str(NetflowHeader()/NetflowHeaderV5(count=1)/NetflowRecordV5(dst="192.168.0.1"))
 
 nf5 = NetflowHeader('\x00\x05\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x7f\x00\x00\x01\x7f\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00<\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x7f\x00\x00\x01\x7f\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00<\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00')
 nf5.version == 5 and nf5[NetflowHeaderV5].count == 2 and isinstance(nf5[NetflowRecordV5].payload, NetflowRecordV5)
+
+
+############
+############
++ pcap / pcapng format support
+
+= Variable creations
+import cStringIO
+pcapfile = cStringIO.StringIO('\xd4\xc3\xb2\xa1\x02\x00\x04\x00\x00\x00\x00\x00\x00\x00\x00\x00\xff\xff\x00\x00e\x00\x00\x00\xcf\xc5\xacVo*\n\x00(\x00\x00\x00(\x00\x00\x00E\x00\x00(\x00\x01\x00\x00@\x06|\xcd\x7f\x00\x00\x01\x7f\x00\x00\x01\x00\x14\x00P\x00\x00\x00\x00\x00\x00\x00\x00P\x02 \x00\x91|\x00\x00\xcf\xc5\xacV_-\n\x00\x1c\x00\x00\x00\x1c\x00\x00\x00E\x00\x00\x1c\x00\x01\x00\x00@\x11|\xce\x7f\x00\x00\x01\x7f\x00\x00\x01\x005\x005\x00\x08\x01r\xcf\xc5\xacV\xf90\n\x00\x1c\x00\x00\x00\x1c\x00\x00\x00E\x00\x00\x1c\x00\x01\x00\x00@\x01|\xde\x7f\x00\x00\x01\x7f\x00\x00\x01\x08\x00\xf7\xff\x00\x00\x00\x00')
+pcapngfile = cStringIO.StringIO('\n\r\r\n\\\x00\x00\x00M<+\x1a\x01\x00\x00\x00\xff\xff\xff\xff\xff\xff\xff\xff\x01\x00,\x00File created by merging: \nFile1: test.pcap \n\x04\x00\x08\x00mergecap\x00\x00\x00\x00\\\x00\x00\x00\x01\x00\x00\x00\\\x00\x00\x00e\x00\x00\x00\xff\xff\x00\x00\x02\x006\x00Unknown/not available in original file format(libpcap)\x00\x00\t\x00\x01\x00\x06\x00\x00\x00\x00\x00\x00\x00\\\x00\x00\x00\x06\x00\x00\x00H\x00\x00\x00\x00\x00\x00\x00\x8d*\x05\x00/\xfc[\xcd(\x00\x00\x00(\x00\x00\x00E\x00\x00(\x00\x01\x00\x00@\x06|\xcd\x7f\x00\x00\x01\x7f\x00\x00\x01\x00\x14\x00P\x00\x00\x00\x00\x00\x00\x00\x00P\x02 \x00\x91|\x00\x00H\x00\x00\x00\x06\x00\x00\x00<\x00\x00\x00\x00\x00\x00\x00\x8d*\x05\x00\x1f\xff[\xcd\x1c\x00\x00\x00\x1c\x00\x00\x00E\x00\x00\x1c\x00\x01\x00\x00@\x11|\xce\x7f\x00\x00\x01\x7f\x00\x00\x01\x005\x005\x00\x08\x01r<\x00\x00\x00\x06\x00\x00\x00<\x00\x00\x00\x00\x00\x00\x00\x8d*\x05\x00\xb9\x02\\\xcd\x1c\x00\x00\x00\x1c\x00\x00\x00E\x00\x00\x1c\x00\x01\x00\x00@\x01|\xde\x7f\x00\x00\x01\x7f\x00\x00\x01\x08\x00\xf7\xff\x00\x00\x00\x00<\x00\x00\x00')
+
+= Read a pcap file
+pktpcap = rdpcap(pcapfile)
+
+= Read a pcapng file
+pktpcapng = rdpcap(pcapngfile)
+
+= Check both packet lists are the same
+assert list(pktpcap) == list(pktpcapng)
+
+= Check packets from pcap file
+assert all(IP in pkt for pkt in pktpcap)
+assert all(any(proto in pkt for pkt in pktpcap) for proto in [ICMP, UDP, TCP])
+
+= Check packets from pcap file
+assert all(IP in pkt for pkt in pktpcapng)
+assert all(any(proto in pkt for pkt in pktpcapng) for proto in [ICMP, UDP, TCP])
+
+
+############
+############
++ LLTD protocol
+
+= Simple packet dissection
+pkt = Ether('\xff\xff\xff\xff\xff\xff\x86\x14\xf0\xc7[.\x88\xd9\x01\x00\x00\x01\xff\xff\xff\xff\xff\xff\x86\x14\xf0\xc7[.\x00\x00\xfe\xe9[\xa9\xaf\xc1\x0bS[\xa9\xaf\xc1\x0bS\x01\x06}[G\x8f\xec.\x02\x04p\x00\x00\x00\x03\x04\x00\x00\x00\x06\x07\x04\xac\x19\x88\xe4\t\x02\x00l\n\x08\x00\x00\x00\x00\x00\x0fB@\x0c\x04\x00\x08=`\x0e\x00\x0f\x0eT\x00E\x00S\x00T\x00-\x00A\x00P\x00\x12\x10\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x14\x04\x00\x00\x00\x00\x15\x01\x02\x18\x00\x19\x02\x04\x00\x1a\x00\x00')
+assert pkt.dst == pkt.real_dst
+assert pkt.src == pkt.real_src
+assert pkt.current_mapper_address == pkt.apparent_mapper_address
+assert pkt.mac == '7d:5b:47:8f:ec:2e'
+assert pkt.hostname == "TEST-AP"
+assert isinstance(pkt[LLTDAttributeEOP].payload, NoPayload)
+
+= Packet build / dissection
+pkt = Ether(str(Ether(dst=ETHER_BROADCAST, src=RandMAC()) / LLTD(tos=0, function=0)))
+assert LLTD in pkt
+assert pkt.dst == pkt.real_dst
+assert pkt.src == pkt.real_src
+assert pkt.tos == 0
+assert pkt.function == 0
+
+= Large TLV
+m1, m2, seq = RandMAC()._fix(), RandMAC()._fix(), 123
+preqbase = Ether(src=m1, dst=m2) / LLTD() / \
+           LLTDQueryLargeTlv(type="Detailed Icon Image")
+prespbase = Ether(src=m2, dst=m1) / LLTD() / \
+            LLTDQueryLargeTlvResp()
+plist = []
+pkt = preqbase.copy()
+pkt.seq = seq
+plist.append(Ether(str(pkt)))
+pkt = prespbase.copy()
+pkt.seq = seq
+pkt.flags = "M"
+pkt.value = "abcd"
+plist.append(Ether(str(pkt)))
+pkt = preqbase.copy()
+pkt.seq = seq + 1
+pkt.offset = 4
+plist.append(Ether(str(pkt)))
+pkt = prespbase.copy()
+pkt.seq = seq + 1
+pkt.value = "efg"
+plist.append(Ether(str(pkt)))
+builder = LargeTlvBuilder()
+builder.parse(plist)
+data = builder.get_data()
+assert len(data) == 1
+key, value = data.popitem()
+assert key.endswith(' [Detailed Icon Image]')
+assert value == 'abcdefg'
+
+
+############
+############
++ Test fragment() / defragment() functions
+
+= fragment()
+payloadlen, fragsize = 100, 8
+assert fragsize % 8 == 0
+fragcount = (payloadlen / fragsize) + bool(payloadlen % fragsize)
+* create the packet
+pkt = IP() / ("X" * payloadlen)
+* create the fragments
+frags = fragment(pkt, fragsize)
+* count the fragments
+assert len(frags) == fragcount
+* each fragment except the last one should have MF set
+assert all(p.flags == 1 for p in frags[:-1])
+assert frags[-1].flags == 0
+* each fragment except the last one should have a payload of fragsize bytes
+assert all(len(p.payload) == 8 for p in frags[:-1])
+assert len(frags[-1].payload) == ((payloadlen % fragsize) or fragsize)
+
+= defragment()
+defrags = defragment(frags)
+* we should have one single packet
+assert len(defrags) == 1
+* which should be the same as pkt reconstructed
+assert defrags[0] == IP(str(pkt))
+
+############
+############
++ TCP/IP tests
+
+= TCP options: UTO - basic build
+str(TCP(options=[("UTO", 0xffff)])) == "\x00\x14\x00\x50\x00\x00\x00\x00\x00\x00\x00\x00\x60\x02\x20\x00\x00\x00\x00\x00\x1c\x04\xff\xff"
+
+= TCP options: UTO - basic dissection
+uto = TCP("\x00\x14\x00\x50\x00\x00\x00\x00\x00\x00\x00\x00\x60\x02\x20\x00\x00\x00\x00\x00\x1c\x04\xff\xff")
+uto[TCP].options[0][0] == "UTO" and uto[TCP].options[0][1] == 0xffff
+
+= IP, TCP & UDP checksums (these tests highly depend on default values)
+pkt = IP() / TCP()
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7ccd and bpkt.payload.chksum == 0x917c
+
+pkt = IP(len=40) / TCP()
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7ccd and bpkt.payload.chksum == 0x917c
+
+pkt = IP(len=40, ihl=5) / TCP()
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7ccd and bpkt.payload.chksum == 0x917c
+
+pkt = IP() / TCP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cc3 and bpkt.payload.chksum == 0x4b2c
+
+pkt = IP(len=50) / TCP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cc3 and bpkt.payload.chksum == 0x4b2c
+
+pkt = IP(len=50, ihl=5) / TCP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cc3 and bpkt.payload.chksum == 0x4b2c
+
+pkt = IP(options=[IPOption_RR()]) / TCP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0xf0bb and bpkt.payload.chksum == 0x4b2c
+
+pkt = IP(len=54, options=[IPOption_RR()]) / TCP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0xf0bb and bpkt.payload.chksum == 0x4b2c
+
+pkt = IP(len=54, ihl=6, options=[IPOption_RR()]) / TCP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0xf0bb and bpkt.payload.chksum == 0x4b2c
+
+pkt = IP() / UDP()
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cce and bpkt.payload.chksum == 0x0172
+
+pkt = IP(len=28) / UDP()
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cce and bpkt.payload.chksum == 0x0172
+
+pkt = IP(len=28, ihl=5) / UDP()
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cce and bpkt.payload.chksum == 0x0172
+
+pkt = IP() / UDP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cc4 and bpkt.payload.chksum == 0xbb17
+
+pkt = IP(len=38) / UDP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cc4 and bpkt.payload.chksum == 0xbb17
+
+pkt = IP(len=38, ihl=5) / UDP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0x7cc4 and bpkt.payload.chksum == 0xbb17
+
+pkt = IP(options=[IPOption_RR()]) / UDP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0xf0bc and bpkt.payload.chksum == 0xbb17
+
+pkt = IP(len=42, options=[IPOption_RR()]) / UDP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0xf0bc and bpkt.payload.chksum == 0xbb17
+
+pkt = IP(len=42, ihl=6, options=[IPOption_RR()]) / UDP() / ("A" * 10)
+bpkt = IP(str(pkt))
+assert bpkt.chksum == 0xf0bc and bpkt.payload.chksum == 0xbb17
+
+= Layer binding
+
+* Test DestMACField & DestIPField
+pkt = Ether(str(Ether()/IP()/UDP(dport=5353)/DNS()))
+assert isinstance(pkt, Ether) and pkt.dst == '01:00:5e:00:00:fb'
+pkt = pkt.payload
+assert isinstance(pkt, IP) and pkt.dst == '224.0.0.251'
+pkt = pkt.payload
+assert isinstance(pkt, UDP) and pkt.dport == 5353
+pkt = pkt.payload
+assert isinstance(pkt, DNS) and isinstance(pkt.payload, NoPayload)
+
+* Same with IPv6
+pkt = Ether(str(Ether()/IPv6()/UDP(dport=5353)/DNS()))
+assert isinstance(pkt, Ether) and pkt.dst == '33:33:00:00:00:fb'
+pkt = pkt.payload
+assert isinstance(pkt, IPv6) and pkt.dst == 'ff02::fb'
+pkt = pkt.payload
+assert isinstance(pkt, UDP) and pkt.dport == 5353
+pkt = pkt.payload
+assert isinstance(pkt, DNS) and isinstance(pkt.payload, NoPayload)
+
++ Mocked read_routes6() calls
+
+= Preliminary definitions
+
+import mock
+import StringIO
+
+def valid_output_read_routes6(routes):
+    """"Return True if 'routes' contains correctly formatted entries, False otherwise"""
+    for destination, plen, next_hop, dev, cset  in routes:
+        if not in6_isvalid(destination) or not type(plen) == int:
+            return False
+        if not in6_isvalid(next_hop) or not type(dev) == str:
+            return False
+        for address in cset:
+            if not in6_isvalid(address):
+                return False
+    return True
+
+def check_mandatory_ipv6_routes(routes6):
+    """Ensure that mandatory IPv6 routes are present"""
+    if len(filter(lambda r: r[0] == "::1" and r[-1] == ["::1"], routes6)) < 1:
+        return False
+    if len(filter(lambda r: r[0] == "fe80::" and r[1] == 64, routes6)) < 1:
+        return False
+    if len(filter(lambda r: in6_islladdr(r[0]) and r[1] == 128 and \
+            r[-1] == ["::1"], routes6)) < 1:
+        return False
+    return True
+
+
+= Mac OS X 10.9.5
+
+@mock.patch("scapy.arch.unix.in6_getifaddr")
+@mock.patch("scapy.arch.unix.os")
+def test_osx_10_9_5(mock_os, mock_in6_getifaddr):
+    """Test read_routes6() on OS X 10.9.5"""
+    # 'netstat -rn -f inet6' output
+    netstat_output = """
+Routing tables
+
+Internet6:
+Destination                             Gateway                         Flags         Netif Expire
+::1                                     ::1                             UHL             lo0
+fe80::%lo0/64                           fe80::1%lo0                     UcI             lo0
+fe80::1%lo0                             link#1                          UHLI            lo0
+fe80::%en0/64                           link#4                          UCI             en0
+fe80::ba26:6cff:fe5f:4eee%en0           b8:26:6c:5f:4e:ee               UHLWIi          en0
+fe80::bae8:56ff:fe45:8ce6%en0           b8:e8:56:45:8c:e6               UHLI            lo0
+ff01::%lo0/32                           ::1                             UmCI            lo0
+ff01::%en0/32                           link#4                          UmCI            en0
+ff02::%lo0/32                           ::1                             UmCI            lo0
+ff02::%en0/32                           link#4                          UmCI            en0
+"""
+    # Mocked file descriptor
+    strio = StringIO.StringIO(netstat_output)
+    mock_os.popen = mock.MagicMock(return_value=strio)
+    # Mocked in6_getifaddr() output
+    mock_in6_getifaddr.return_value = [("::1", IPV6_ADDR_LOOPBACK, "lo0"),
+                                       ("fe80::ba26:6cff:fe5f:4eee", IPV6_ADDR_LINKLOCAL, "en0")]
+    # Test the function
+    from scapy.arch.unix import read_routes6
+    routes = read_routes6()
+    for r in routes:
+        print r
+    assert(len(routes) == 6)
+    assert(check_mandatory_ipv6_routes(routes))
+
+test_osx_10_9_5()
+
+
+= Mac OS X 10.9.5 with global IPv6 connectivity
+@mock.patch("scapy.arch.unix.in6_getifaddr")
+@mock.patch("scapy.arch.unix.os")
+def test_osx_10_9_5_global(mock_os, mock_in6_getifaddr):
+    """Test read_routes6() on OS X 10.9.5 with an IPv6 connectivity"""
+    # 'netstat -rn -f inet6' output
+    netstat_output = """
+Routing tables
+
+Internet6:
+Destination                             Gateway                         Flags         Netif Expire
+default                                 fe80::ba26:8aff:fe5f:4eef%en0   UGc             en0
+::1                                     ::1                             UHL             lo0
+2a01:ab09:7d:1f01::/64                  link#4                          UC              en0
+2a01:ab09:7d:1f01:420:205c:9fab:5be7    b8:e9:55:44:7c:e5               UHL             lo0
+2a01:ab09:7d:1f01:ba26:8aff:fe5f:4eef   b8:26:8a:5f:4e:ef               UHLWI           en0
+2a01:ab09:7d:1f01:bae9:55ff:fe44:7ce5   b8:e9:55:44:7c:e5               UHL             lo0
+fe80::%lo0/64                           fe80::1%lo0                     UcI             lo0
+fe80::1%lo0                             link#1                          UHLI            lo0
+fe80::%en0/64                           link#4                          UCI             en0
+fe80::5664:d9ff:fe79:4e00%en0           54:64:d9:79:4e:0                UHLWI           en0
+fe80::6ead:f8ff:fe74:945a%en0           6c:ad:f8:74:94:5a               UHLWI           en0
+fe80::a2f3:c1ff:fec4:5b50%en0           a0:f3:c1:c4:5b:50               UHLWI           en0
+fe80::ba26:8aff:fe5f:4eef%en0           b8:26:8a:5f:4e:ef               UHLWIir         en0
+fe80::bae9:55ff:fe44:7ce5%en0           b8:e9:55:44:7c:e5               UHLI            lo0
+ff01::%lo0/32                           ::1                             UmCI            lo0
+ff01::%en0/32                           link#4                          UmCI            en0
+ff02::%lo0/32                           ::1                             UmCI            lo
+"""
+    # Mocked file descriptor
+    strio = StringIO.StringIO(netstat_output)
+    mock_os.popen = mock.MagicMock(return_value=strio)
+    # Mocked in6_getifaddr() output
+    mock_in6_getifaddr.return_value = [("::1", IPV6_ADDR_LOOPBACK, "lo0"),
+                                       ("fe80::ba26:6cff:fe5f:4eee", IPV6_ADDR_LINKLOCAL, "en0")]
+    # Test the function
+    from scapy.arch.unix import read_routes6
+    routes = read_routes6()
+    assert(valid_output_read_routes6(routes))
+    for r in routes:
+        print r
+    assert(len(routes) == 11)
+    assert(check_mandatory_ipv6_routes(routes))
+
+test_osx_10_9_5_global()
+
+
+= Mac OS X 10.10.4
+
+@mock.patch("scapy.arch.unix.in6_getifaddr")
+@mock.patch("scapy.arch.unix.os")
+def test_osx_10_10_4(mock_os, mock_in6_getifaddr):
+    """Test read_routes6() on OS X 10.10.4"""
+    # 'netstat -rn -f inet6' output
+    netstat_output = """
+Routing tables
+
+Internet6:
+Destination                             Gateway                         Flags         Netif Expire
+::1                                     ::1                             UHL             lo0
+fe80::%lo0/64                           fe80::1%lo0                     UcI             lo0
+fe80::1%lo0                             link#1                          UHLI            lo0
+fe80::%en0/64                           link#4                          UCI             en0
+fe80::a00:27ff:fe9b:c965%en0            8:0:27:9b:c9:65                 UHLI            lo0
+ff01::%lo0/32                           ::1                             UmCI            lo0
+ff01::%en0/32                           link#4                          UmCI            en0
+ff02::%lo0/32                           ::1                             UmCI            lo0
+ff02::%en0/32                           link#4                          UmCI            en0
+"""
+    # Mocked file descriptor
+    strio = StringIO.StringIO(netstat_output)
+    mock_os.popen = mock.MagicMock(return_value=strio)
+    # Mocked in6_getifaddr() output
+    mock_in6_getifaddr.return_value = [("::1", IPV6_ADDR_LOOPBACK, "lo0"),
+                                       ("fe80::a00:27ff:fe9b:c965", IPV6_ADDR_LINKLOCAL, "en0")]
+    # Test the function
+    from scapy.arch.unix import read_routes6
+    routes = read_routes6()
+    for r in routes:
+        print r
+    assert(len(routes) == 5)
+    assert(check_mandatory_ipv6_routes(routes))
+
+test_osx_10_10_4()
+
+
+= FreeBSD 10.2
+
+@mock.patch("scapy.arch.unix.in6_getifaddr")
+@mock.patch("scapy.arch.unix.os")
+def test_freebsd_10_2(mock_os, mock_in6_getifaddr):
+    """Test read_routes6() on FreeBSD 10.2"""
+    # 'netstat -rn -f inet6' output
+    netstat_output = """
+Routing tables
+
+Internet6:
+Destination                       Gateway                       Flags      Netif Expire
+::/96                             ::1                           UGRS        lo0
+::1                               link#2                        UH          lo0
+::ffff:0.0.0.0/96                 ::1                           UGRS        lo0
+fe80::/10                         ::1                           UGRS        lo0
+fe80::%lo0/64                     link#2                        U           lo0
+fe80::1%lo0                       link#2                        UHS         lo0
+ff01::%lo0/32                     ::1                           U           lo0
+ff02::/16                         ::1                           UGRS        lo0
+ff02::%lo0/32                     ::1                           U           lo0
+"""
+    # Mocked file descriptor
+    strio = StringIO.StringIO(netstat_output)
+    mock_os.popen = mock.MagicMock(return_value=strio)
+    # Mocked in6_getifaddr() output
+    mock_in6_getifaddr.return_value = [("::1", IPV6_ADDR_LOOPBACK, "lo0")]
+    # Test the function
+    from scapy.arch.unix import read_routes6
+    routes = read_routes6()
+    for r in routes:
+        print r
+    assert(len(routes) == 3)
+    assert(check_mandatory_ipv6_routes(routes))
+
+test_freebsd_10_2()
+
+
+= OpenBSD 5.5
+
+@mock.patch("scapy.arch.OPENBSD")
+@mock.patch("scapy.arch.unix.in6_getifaddr")
+@mock.patch("scapy.arch.unix.os")
+def test_openbsd_5_5(mock_os, mock_in6_getifaddr, mock_openbsd):
+    """Test read_routes6() on OpenBSD 5.5"""
+    # 'netstat -rn -f inet6' output
+    netstat_output = """
+Routing tables
+
+Internet6:
+Destination                        Gateway                        Flags   Refs      Use   Mtu  Prio Iface
+::/104                             ::1                            UGRS       0        0     -     8 lo0  
+::/96                              ::1                            UGRS       0        0     -     8 lo0  
+::1                                ::1                            UH        14        0 33144     4 lo0  
+::127.0.0.0/104                    ::1                            UGRS       0        0     -     8 lo0  
+::224.0.0.0/100                    ::1                            UGRS       0        0     -     8 lo0  
+::255.0.0.0/104                    ::1                            UGRS       0        0     -     8 lo0  
+::ffff:0.0.0.0/96                  ::1                            UGRS       0        0     -     8 lo0  
+2002::/24                          ::1                            UGRS       0        0     -     8 lo0  
+2002:7f00::/24                     ::1                            UGRS       0        0     -     8 lo0  
+2002:e000::/20                     ::1                            UGRS       0        0     -     8 lo0  
+2002:ff00::/24                     ::1                            UGRS       0        0     -     8 lo0  
+fe80::/10                          ::1                            UGRS       0        0     -     8 lo0  
+fe80::%em0/64                      link#1                         UC         0        0     -     4 em0  
+fe80::a00:27ff:fe04:59bf%em0       08:00:27:04:59:bf              UHL        0        0     -     4 lo0  
+fe80::%lo0/64                      fe80::1%lo0                    U          0        0     -     4 lo0  
+fe80::1%lo0                        link#3                         UHL        0        0     -     4 lo0  
+fec0::/10                          ::1                            UGRS       0        0     -     8 lo0  
+ff01::/16                          ::1                            UGRS       0        0     -     8 lo0  
+ff01::%em0/32                      link#1                         UC         0        0     -     4 em0  
+ff01::%lo0/32                      fe80::1%lo0                    UC         0        0     -     4 lo0  
+ff02::/16                          ::1                            UGRS       0        0     -     8 lo0  
+ff02::%em0/32                      link#1                         UC         0        0     -     4 em0  
+ff02::%lo0/32                      fe80::1%lo0                    UC         0        0     -     4 lo0 
+"""
+    # Mocked file descriptor
+    strio = StringIO.StringIO(netstat_output)
+    mock_os.popen = mock.MagicMock(return_value=strio)
+    
+    # Mocked in6_getifaddr() output
+    mock_in6_getifaddr.return_value = [("::1", IPV6_ADDR_LOOPBACK, "lo0"),
+                                       ("fe80::a00:27ff:fe04:59bf", IPV6_ADDR_LINKLOCAL, "em0")]
+    # Mocked OpenBSD parsing behavior
+    mock_openbsd = True
+    # Test the function
+    from scapy.arch.unix import read_routes6
+    routes = read_routes6()
+    for r in routes:
+        print r
+    assert(len(routes) == 5)
+    assert(check_mandatory_ipv6_routes(routes))
+
+test_openbsd_5_5()
+
+
+= NetBSD 7.0
+
+@mock.patch("scapy.arch.NETBSD")
+@mock.patch("scapy.arch.unix.in6_getifaddr")
+@mock.patch("scapy.arch.unix.os")
+def test_netbsd_7_0(mock_os, mock_in6_getifaddr, mock_netbsd):
+    """Test read_routes6() on NetBSD 7.0"""
+    # 'netstat -rn -f inet6' output
+    netstat_output = """
+Routing tables
+
+Internet6:
+Destination                        Gateway                        Flags    Refs      Use    Mtu Interface
+::/104                             ::1                            UGRS        -        -      -  lo0
+::/96                              ::1                            UGRS        -        -      -  lo0
+::1                                ::1                            UH          -        -  33648  lo0
+::127.0.0.0/104                    ::1                            UGRS        -        -      -  lo0
+::224.0.0.0/100                    ::1                            UGRS        -        -      -  lo0
+::255.0.0.0/104                    ::1                            UGRS        -        -      -  lo0
+::ffff:0.0.0.0/96                  ::1                            UGRS        -        -      -  lo0
+2001:db8::/32                      ::1                            UGRS        -        -      -  lo0
+2002::/24                          ::1                            UGRS        -        -      -  lo0
+2002:7f00::/24                     ::1                            UGRS        -        -      -  lo0
+2002:e000::/20                     ::1                            UGRS        -        -      -  lo0
+2002:ff00::/24                     ::1                            UGRS        -        -      -  lo0
+fe80::/10                          ::1                            UGRS        -        -      -  lo0
+fe80::%wm0/64                      link#1                         UC          -        -      -  wm0
+fe80::acd1:3989:180e:fde0          08:00:27:a1:64:d8              UHL         -        -      -  lo0
+fe80::%lo0/64                      fe80::1                        U           -        -      -  lo0
+fe80::1                            link#2                         UHL         -        -      -  lo0
+ff01:1::/32                        link#1                         UC          -        -      -  wm0
+ff01:2::/32                        ::1                            UC          -        -      -  lo0
+ff02::%wm0/32                      link#1                         UC          -        -      -  wm0
+ff02::%lo0/32                      ::1                            UC          -        -      -  lo0
+"""
+    # Mocked file descriptor
+    strio = StringIO.StringIO(netstat_output)
+    mock_os.popen = mock.MagicMock(return_value=strio)
+    # Mocked in6_getifaddr() output
+    mock_in6_getifaddr.return_value = [("::1", IPV6_ADDR_LOOPBACK, "lo0"),
+                                       ("fe80::acd1:3989:180e:fde0", IPV6_ADDR_LINKLOCAL, "wm0")]
+    # Test the function
+    from scapy.arch.unix import read_routes6
+    routes = read_routes6()
+    for r in routes:
+        print r
+    assert(len(routes) == 5)
+    assert(check_mandatory_ipv6_routes(routes))
+
+test_netbsd_7_0()

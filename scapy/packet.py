@@ -10,9 +10,10 @@ Packet class. Binding mechanism. fuzz() method.
 import re
 import time,itertools
 import copy
-from fields import StrField,ConditionalField,Emph,PacketListField,BitField
+from fields import StrField, ConditionalField, Emph, PacketListField, BitField, \
+    MultiEnumField, EnumField, FlagsField
 from config import conf
-from base_classes import BasePacket,Gen,SetGen,Packet_metaclass,NewDefaultValues
+from base_classes import BasePacket, Gen, SetGen, Packet_metaclass
 from volatile import VolatileValue
 from utils import import_hexcap,tex_escape,colgen,get_temp_file
 from error import Scapy_Exception,log_runtime
@@ -36,7 +37,8 @@ class RawVal:
 class Packet(BasePacket):
     __slots__ = [
         "time", "sent_time", "name", "default_fields",
-        "overloaded_fields", "fields", "fieldtype", "packetfields",
+        "overload_fields", "overloaded_fields", "fields", "fieldtype",
+        "packetfields",
         "original", "explicit", "raw_packet_cache",
         "raw_packet_cache_fields", "_pkt", "post_transforms",
         # then payload and underlayer
@@ -44,6 +46,8 @@ class Packet(BasePacket):
         "name",
         # used for sr()
         "_answered",
+        # used when sniffing
+        "direction", "sniffed_on"
     ]
     __metaclass__ = Packet_metaclass
     name = None
@@ -51,6 +55,7 @@ class Packet(BasePacket):
     overload_fields = {}
     payload_guess = []
     show_indent = 1
+    show_summary = True
 
     @classmethod
     def from_hexcap(cls):
@@ -63,7 +68,7 @@ class Packet(BasePacket):
 
     @classmethod
     def lower_bonds(self):
-        for lower,fval in self.overload_fields.iteritems():
+        for lower,fval in self._overload_fields.iteritems():
             print "%-20s  %s" % (lower.__name__, ", ".join("%-12s" % ("%s=%r"%i) for i in fval.iteritems()))
 
     def __init__(self, _pkt="", post_transform=None, _internal=0, _underlayer=None, **fields):
@@ -73,6 +78,7 @@ class Packet(BasePacket):
                      if self._name is None else
                      self._name)
         self.default_fields = {}
+        self.overload_fields = self._overload_fields
         self.overloaded_fields = {}
         self.fields = {}
         self.fieldtype = {}
@@ -88,8 +94,8 @@ class Packet(BasePacket):
             self.dissect(_pkt)
             if not _internal:
                 self.dissection_done(self)
-        for f in fields.keys():
-            self.fields[f] = self.get_field(f).any2i(self,fields[f])
+        for f, v in fields.iteritems():
+            self.fields[f] = self.get_field(f).any2i(self, v)
         if type(post_transform) is list:
             self.post_transforms = post_transform
         elif post_transform is None:
@@ -181,12 +187,10 @@ class Packet(BasePacket):
         return self.payload.getfield_and_val(attr)
     
     def __getattr__(self, attr):
-        if isinstance(self, Packet):
-            fld,v = self.getfield_and_val(attr)
-            if fld is not None:
-                return fld.i2h(self, v)
-            return v
-        raise AttributeError(attr)
+        fld,v = self.getfield_and_val(attr)
+        if fld is not None:
+            return fld.i2h(self, v)
+        return v
 
     def setfieldval(self, attr, val):
         if self.default_fields.has_key(attr):
@@ -206,13 +210,12 @@ class Packet(BasePacket):
             self.payload.setfieldval(attr,val)
 
     def __setattr__(self, attr, val):
-        if isinstance(self, Packet):
-            if attr in self.__all_slots__:
-                return object.__setattr__(self, attr, val)
-            try:
-                return self.setfieldval(attr,val)
-            except AttributeError:
-                pass
+        if attr in self.__all_slots__:
+            return object.__setattr__(self, attr, val)
+        try:
+            return self.setfieldval(attr,val)
+        except AttributeError:
+            pass
         return object.__setattr__(self, attr, val)
 
     def delfieldval(self, attr):
@@ -229,15 +232,14 @@ class Packet(BasePacket):
             self.payload.delfieldval(attr)
 
     def __delattr__(self, attr):
-        if isinstance(self, Packet):
-            if attr == "payload":
-                return self.remove_payload()
-            if attr in self.__all_slots__:
-                return object.__delattr__(self, attr)
-            try:
-                return self.delfieldval(attr)
-            except AttributeError:
-                pass
+        if attr == "payload":
+            return self.remove_payload()
+        if attr in self.__all_slots__:
+            return object.__delattr__(self, attr)
+        try:
+            return self.delfieldval(attr)
+        except AttributeError:
+            pass
         return object.__delattr__(self, attr)
             
     def __repr__(self):
@@ -627,8 +629,8 @@ Creates an EPS file describing a packet. If filename is not provided a temporary
         for t in self.aliastypes:
             for fval, cls in t.payload_guess:
                 ok = 1
-                for k in fval.keys():
-                    if not hasattr(self, k) or fval[k] != self.getfieldval(k):
+                for k, v in fval.iteritems():
+                    if not hasattr(self, k) or v != self.getfieldval(k):
                         ok = 0
                         break
                 if ok:
@@ -641,12 +643,12 @@ Creates an EPS file describing a packet. If filename is not provided a temporary
 
     def hide_defaults(self):
         """Removes fields' values that are the same as default values."""
-        for k in self.fields.keys():
-            if self.default_fields.has_key(k):
-                if self.default_fields[k] == self.fields[k]:
-                    del(self.fields[k])
+        for k, v in self.fields.items():  # use .items(): self.fields is modified in the loop
+            if k in self.default_fields:
+                if self.default_fields[k] == v:
+                    del self.fields[k]
         self.payload.hide_defaults()
-            
+
     def clone_with(self, payload=None, **kargs):
         pkt = self.__class__()
         pkt.explicit = 1
@@ -694,9 +696,9 @@ Creates an EPS file describing a packet. If filename is not provided a temporary
             todo = []
             done = self.fields
         else:
-            todo = [ k for (k,v) in itertools.chain(self.default_fields.iteritems(),
-                                                    self.overloaded_fields.iteritems())
-                     if isinstance(v, VolatileValue) ] + self.fields.keys()
+            todo = [k for (k,v) in itertools.chain(self.default_fields.iteritems(),
+                                                   self.overloaded_fields.iteritems())
+                    if isinstance(v, VolatileValue)] + self.fields.keys()
             done = {}
         return loop(todo, done)
 
@@ -764,7 +766,7 @@ Creates an EPS file describing a packet. If filename is not provided a temporary
             ccls,fld = cls.split(".",1)
         else:
             ccls,fld = cls,None
-        if cls is None or self.__class__ == cls or self.__class__.name == ccls:
+        if cls is None or self.__class__ == cls or self.__class__.__name__ == ccls:
             if nb == 1:
                 if fld is None:
                     return self
@@ -984,9 +986,7 @@ A side effect is that, to obtain "{" and "}" characters, you must use
         return ""
 
     def _do_summary(self):
-        found,s,needed = self.payload._do_summary()
-        if s:
-            s = " / "+s
+        found, s, needed = self.payload._do_summary()
         ret = ""
         if not found or self.__class__ in needed:
             ret = self.mysummary()
@@ -996,14 +996,17 @@ A side effect is that, to obtain "{" and "}" characters, you must use
         if ret or needed:
             found = 1
         if not ret:
-            ret = self.__class__.__name__
+            ret = self.__class__.__name__ if self.show_summary else ""
         if self.__class__ in conf.emph:
             impf = []
             for f in self.fields_desc:
                 if f in conf.emph:
                     impf.append("%s=%s" % (f.name, f.i2repr(self, self.getfieldval(f.name))))
             ret = "%s [%s]" % (ret," ".join(impf))
-        ret = "%s%s" % (ret,s)
+        if ret and s:
+            ret = "%s / %s" % (ret, s)
+        else:
+            ret = "%s%s" % (ret,s)
         return found,ret,needed
 
     def summary(self, intern=0):
@@ -1187,8 +1190,8 @@ def bind_bottom_up(lower, upper, __fval=None, **fval):
 def bind_top_down(lower, upper, __fval=None, **fval):
     if __fval is not None:
         fval.update(__fval)
-    upper.overload_fields = upper.overload_fields.copy()
-    upper.overload_fields[lower] = fval
+    upper._overload_fields = upper._overload_fields.copy()
+    upper._overload_fields[lower] = fval
     
 @conf.commands.register
 def bind_layers(lower, upper, __fval=None, **fval):
@@ -1213,13 +1216,13 @@ def split_bottom_up(lower, upper, __fval=None, **fval):
 def split_top_down(lower, upper, __fval=None, **fval):
     if __fval is not None:
         fval.update(__fval)
-    if lower in upper.overload_fields:
-        ofval = upper.overload_fields[lower]
+    if lower in upper._overload_fields:
+        ofval = upper._overload_fields[lower]
         for k in fval:
             if k not in ofval or ofval[k] != fval[k]:
                 return
-        upper.overload_fields = upper.overload_fields.copy()
-        del(upper.overload_fields[lower])
+        upper._overload_fields = upper._overload_fields.copy()
+        del(upper._overload_fields[lower])
 
 @conf.commands.register
 def split_layers(lower, upper, __fval=None, **fval):
@@ -1231,7 +1234,7 @@ def split_layers(lower, upper, __fval=None, **fval):
 
 
 @conf.commands.register
-def ls(obj=None, case_sensitive=False):
+def ls(obj=None, case_sensitive=False, verbose=False):
     """List  available layers, or infos on a given layer class or name"""
     is_string = isinstance(obj, basestring)
 
@@ -1253,9 +1256,38 @@ def ls(obj=None, case_sensitive=False):
             for f in obj.fields_desc:
                 cur_fld = f
                 attrs = []
+                long_attrs = []
                 while isinstance(cur_fld, (Emph, ConditionalField)):
                     attrs.append(cur_fld.__class__.__name__[:4])
                     cur_fld = cur_fld.fld
+                if verbose and isinstance(cur_fld, EnumField) \
+                   and hasattr(cur_fld, "i2s"):
+                    if len(cur_fld.i2s) < 50:
+                        long_attrs.extend(
+                            "%s: %d" % (strval, numval)
+                            for numval, strval in
+                            sorted(cur_fld.i2s.iteritems())
+                        )
+                elif isinstance(cur_fld, MultiEnumField):
+                    fld_depend = cur_fld.depends_on(obj.__class__
+                                                    if is_pkt else obj)
+                    attrs.append("Depends on %s" % fld_depend.name)
+                    if verbose:
+                        cur_i2s = cur_fld.i2s_multi.get(
+                            cur_fld.depends_on(obj if is_pkt else obj()), {}
+                        )
+                        if len(cur_i2s) < 50:
+                            long_attrs.extend(
+                                "%s: %d" % (strval, numval)
+                                for numval, strval in
+                                sorted(cur_i2s.iteritems())
+                            )
+                elif verbose and isinstance(cur_fld, FlagsField):
+                    names = cur_fld.names
+                    if isinstance(names, basestring):
+                        long_attrs.append(", ".join(names))
+                    else:
+                        long_attrs.append(", ".join(name[0] for name in names))
                 class_name = "%s (%s)" % (
                     cur_fld.__class__.__name__,
                     ", ".join(attrs)) if attrs else cur_fld.__class__.__name__
@@ -1263,10 +1295,12 @@ def ls(obj=None, case_sensitive=False):
                     class_name += " (%d bit%s)" % (cur_fld.size,
                                                    "s" if cur_fld.size > 1
                                                    else "")
-                print "%-10s : %-25s =" % (f.name, class_name),
+                print "%-10s : %-35s =" % (f.name, class_name),
                 if is_pkt:
                     print "%-15r" % getattr(obj,f.name),
                 print "(%r)" % f.default
+                for attr in long_attrs:
+                    print "%-15s%s" % ("", attr)
             if is_pkt and not isinstance(obj.payload, NoPayload):
                 print "--"
                 ls(obj.payload)
